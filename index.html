@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>집필실</title>
+  <meta name="description" content="집중해서 쓰고, 한글(HWPX) 서식으로 다듬는 아이패드용 글쓰기 앱">
+  <meta name="theme-color" content="#f6f3ec">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="집필실">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body data-screen="loading" data-theme="paper">
+
+  <div id="loading" class="center">
+    <p id="loadingText">엔진을 불러오는 중…</p>
+  </div>
+
+  <!-- 서재: 문서 목록 -->
+  <section id="library" hidden>
+    <header class="lib-head">
+      <h1>집필실</h1>
+      <div class="lib-actions">
+        <button id="btnNew" class="primary">새 문서</button>
+        <button id="btnOpen">파일 열기</button>
+        <input id="fileInput" type="file" hidden>
+      </div>
+    </header>
+    <ul id="docList" class="doc-list"></ul>
+    <p id="emptyHint" class="hint" hidden>아직 문서가 없습니다. <b>새 문서</b>로 시작하거나 <b>파일 열기</b>로 HWPX 파일을 가져오세요.</p>
+    <p class="hint small">문서는 이 기기 안에만 자동 저장됩니다. 다른 곳으로 옮기려면 문서를 연 뒤 <b>내보내기</b>를 누르세요.</p>
+  </section>
+
+  <!-- 작업 화면: 집필 / 편집 -->
+  <section id="work" hidden>
+    <header id="bar">
+      <button id="btnBack" title="서재로">‹ 서재</button>
+      <input id="title" type="text" aria-label="문서 이름" spellcheck="false" autocomplete="off">
+      <span id="status" aria-live="polite"></span>
+      <div class="seg" role="tablist" aria-label="화면 전환">
+        <button id="tabWrite" role="tab" aria-selected="true">집필</button>
+        <button id="tabEdit" role="tab" aria-selected="false">편집</button>
+      </div>
+      <button id="btnLook" title="집필 화면 설정">가</button>
+      <button id="btnExport" title="HWPX 파일로 내보내기">내보내기</button>
+    </header>
+    <button id="barHandle" aria-label="도구 막대 보이기"></button>
+
+    <main id="write">
+      <div id="page" contenteditable="true" spellcheck="false" autocapitalize="off" autocorrect="off"
+           role="textbox" aria-multiline="true" aria-label="본문"></div>
+    </main>
+    <div id="count"></div>
+
+    <div id="edit" hidden></div>
+
+    <div id="look" class="popover" hidden>
+      <div class="row">
+        <span>바탕</span>
+        <div class="seg small" id="optTheme">
+          <button data-v="paper">종이</button><button data-v="sepia">세피아</button><button data-v="night">밤</button>
+        </div>
+      </div>
+      <div class="row">
+        <span>글꼴</span>
+        <div class="seg small" id="optFont">
+          <button data-v="serif">명조</button><button data-v="sans">고딕</button>
+        </div>
+      </div>
+      <label class="row"><span>글자 크기</span><input id="optSize" type="range" min="15" max="28" step="1"></label>
+      <label class="row"><span>줄 간격</span><input id="optLead" type="range" min="1.5" max="2.4" step="0.1"></label>
+      <label class="row"><span>글줄 너비</span><input id="optWidth" type="range" min="26" max="48" step="2"></label>
+      <label class="row"><span>타자기 스크롤</span><input id="optTypewriter" type="checkbox"></label>
+      <label class="row"><span>쓰는 문단만 또렷하게</span><input id="optFocus" type="checkbox"></label>
+      <p class="hint small">여기 설정은 집필 화면에만 적용됩니다. 실제 문서의 글꼴·줄 간격·표는 <b>편집</b>에서 바꿉니다.</p>
+    </div>
+  </section>
+
+  <div id="toast" role="status" hidden></div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "name": "jipilsil",
+  "version": "0.1.0",
+  "private": true,
+  "description": "집필실 — 집중해서 쓰고 HWPX 서식으로 다듬는 아이패드용 웹앱 (rhwp 기반)",
+  "type": "module",
+  "scripts": {
+    "start": "node scripts/serve.mjs",
+    "test": "node tests/e2e.cjs"
+  }
+}
