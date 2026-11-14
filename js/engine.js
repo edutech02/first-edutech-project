@@ -2,6 +2,7 @@
 // 집필 화면은 문서의 "본문 문단 글자"만 다루고, 서식·표·그림은 엔진이 그대로 보존한다.
 import init, { HwpDocument } from '../vendor/rhwp-core/rhwp.js';
 import { WASM_URL } from './config.js';
+import { planSection } from './sync.js';
 
 let ready = null;
 
@@ -36,8 +37,6 @@ export function blankDocumentBytes() {
     doc.free();
   }
 }
-
-const cp = (s) => Array.from(s); // 엔진의 글자 위치는 유니코드 코드포인트 단위
 
 function check(json, what) {
   let r;
@@ -85,68 +84,19 @@ export function readSections(doc) {
   return sections;
 }
 
-function replaceText(doc, sec, para, oldText, newText) {
-  if (oldText === newText) return;
-  const a = cp(oldText);
-  const b = cp(newText);
-  let pre = 0;
-  while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++;
-  let suf = 0;
-  while (suf < a.length - pre && suf < b.length - pre && a[a.length - 1 - suf] === b[b.length - 1 - suf]) suf++;
-  // 바뀐 가운데 부분만 지우고 넣는다 → 앞뒤 글자의 서식(굵게·글꼴 등)이 유지된다.
-  const del = a.length - pre - suf;
-  if (del > 0) check(doc.deleteText(sec, para, pre, del), '글자 삭제');
-  const ins = b.slice(pre, b.length - suf).join('').replace(/\r?\n/g, ' ');
-  if (ins) check(doc.insertText(sec, para, pre, ins), '글자 입력');
-}
+const run = {
+  split: (doc, sec, o) => doc.splitParagraph(sec, o.para, o.at),
+  insert: (doc, sec, o) => doc.insertText(sec, o.para, o.at, o.text),
+  delete: (doc, sec, o) => doc.deleteText(sec, o.para, o.at, o.count),
+  merge: (doc, sec, o) => doc.mergeParagraph(sec, o.para),
+  remove: (doc, sec, o) => doc.deleteParagraph(sec, o.para),
+};
 
 /**
- * 집필 화면에서 고친 문단 목록을 한 구역에 반영한다.
+ * 집필 화면에서 고친 문단 목록을 한 구역에 반영한다. 무엇을 할지는 sync.js가 정하고 여기서는 실행만 한다.
  *  orig: readSections()가 준 그 구역의 문단 목록
  *  next: [{ k: 원래 문단 번호 또는 null(새 문단), text }]
  */
 export function syncSection(doc, sec, orig, next) {
-  const n = orig.length;
-  const kept = new Map(); // 원래 문단 번호 → 새 글
-  const after = Array.from({ length: n + 1 }, () => []); // after[i+1]: 원래 i번 문단 뒤에 새로 생긴 문단들
-  let last = -1;
-  for (const item of next) {
-    const k = item.k;
-    if (Number.isInteger(k) && k > last && k < n) {
-      kept.set(k, item.text);
-      last = k;
-    } else {
-      after[last + 1].push(item.text);
-    }
-  }
-
-  // 뒤에서 앞으로 처리하면 앞쪽 문단 번호가 흔들리지 않는다.
-  for (let i = n - 1; i >= 0; i--) {
-    const added = after[i + 1];
-    for (let j = added.length - 1; j >= 0; j--) {
-      check(doc.splitParagraph(sec, i, doc.getParagraphLength(sec, i)), '문단 추가');
-      if (added[j]) check(doc.insertText(sec, i + 1, 0, added[j].replace(/\r?\n/g, ' ')), '글자 입력');
-    }
-    const o = orig[i];
-    if (o.lock) continue; // 표·그림 문단은 집필 화면에서 건드리지 않는다
-    if (kept.has(i)) {
-      replaceText(doc, sec, i, o.text, kept.get(i));
-    } else if (o.ctl) {
-      // 쪽 설정 같은 숨은 정보가 든 문단은 지우지 않고 글자만 비운 뒤, 가능하면 다음 문단을 끌어올린다.
-      replaceText(doc, sec, i, o.text, '');
-      if (i + 1 < doc.getParagraphCount(sec) && controlCount(doc, sec, i + 1) === 0) {
-        check(doc.mergeParagraph(sec, i + 1), '문단 합치기');
-      }
-    } else if (doc.getParagraphCount(sec) > 1) {
-      check(doc.deleteParagraph(sec, i), '문단 삭제');
-    } else {
-      replaceText(doc, sec, i, o.text, '');
-    }
-  }
-
-  const head = after[0]; // 첫 문단 앞에 새로 생긴 문단들
-  for (let j = head.length - 1; j >= 0; j--) {
-    check(doc.splitParagraph(sec, 0, 0), '문단 추가');
-    if (head[j]) check(doc.insertText(sec, 0, 0, head[j].replace(/\r?\n/g, ' ')), '글자 입력');
-  }
+  for (const op of planSection(orig, next)) check(run[op.op](doc, sec, op), `문단 ${op.para} ${op.op}`);
 }
