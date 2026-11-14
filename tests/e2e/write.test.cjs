@@ -27,6 +27,14 @@ h.main('write', async ({ page }) => {
   console.log(`입력을 멈춘 뒤 ${Date.now() - started}ms 만에 저장됨`);
   assert.deepStrictEqual(await h.texts(page), LINES);
 
+  // 서재로 나갔다가 다시 열기
+  await h.wake(page);
+  await page.click('#btnBack');
+  await page.waitForSelector('#library:not([hidden])');
+  await page.click('.doc-open');
+  await page.waitForSelector('#work:not([hidden])');
+  assert.deepStrictEqual(await h.texts(page), LINES, '서재에 다녀온 뒤에도 같은 글');
+
   // 저장 직후 새로 고침 → 서재에서 다시 열기
   await page.reload();
   await page.waitForSelector('#library:not([hidden])', { timeout: 60000 });

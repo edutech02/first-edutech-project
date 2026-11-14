@@ -127,12 +127,18 @@ export function initWriteView({ onInput }) {
     const items = collect(page);
     const perSection = Array.from({ length: sectionCount }, () => []);
     let sec = 0;
+    let lastK = -1;
     for (const it of items) {
       const key = it.el ? parseKey(it.el) : null;
-      if (key && key[0] >= sec && key[0] < sectionCount) {
+      const forward = key && key[0] < sectionCount && (key[0] > sec || (key[0] === sec && key[1] > lastK));
+      if (forward) {
         sec = key[0];
+        lastK = key[1];
         perSection[sec].push({ k: key[1], text: it.text });
+      } else if (key && key[0] === sec && !it.locked) {
+        perSection[sec].push({ k: key[1], text: it.text }); // Enter로 복제된 번호표: 새 문단인지는 sync.js가 가린다
       } else if (!it.locked) {
+        // 복제되거나 끌려온 자리 표시(locked)는 글이 아니므로 버린다.
         perSection[sec].push({ k: null, text: it.text });
       }
     }
@@ -149,8 +155,39 @@ export function initWriteView({ onInput }) {
       const it = items[n];
       return it.el && (para.lock ? it.locked : !it.locked && it.text === para.text);
     });
-    if (same) flat.forEach(({ k }, n) => { items[n].el.dataset.k = k; });
-    else render(sections);
+    if (same) {
+      flat.forEach(({ k }, n) => { items[n].el.dataset.k = k; });
+      return;
+    }
+    // 다시 그리면 커서가 사라지므로, "몇 번째 글 문단의 몇 번째 글자"로 기억했다가 되돌린다.
+    const caret = saveCaret(items);
+    render(sections);
+    if (caret) restoreCaret(caret);
+  }
+
+  function saveCaret(items) {
+    const sel = document.getSelection();
+    const cur = currentPara();
+    if (!cur || !sel.isCollapsed) return null;
+    const index = items.filter((it) => !it.locked).findIndex((it) => it.el === cur);
+    if (index < 0) return null;
+    const before = document.createRange();
+    before.selectNodeContents(cur);
+    before.setEnd(sel.anchorNode, sel.anchorOffset);
+    return { index, offset: before.toString().length };
+  }
+
+  function restoreCaret({ index, offset }) {
+    const p = [...page.children].filter((el) => !el.classList.contains('locked'))[index];
+    if (!p) return;
+    const node = p.firstChild?.nodeType === Node.TEXT_NODE ? p.firstChild : p;
+    const range = document.createRange();
+    range.setStart(node, node === p ? 0 : Math.min(offset, node.length));
+    range.collapse(true);
+    const sel = document.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    markCurrent();
   }
 
   /* ── 집중: 쓰는 문단 표시, 타자기 스크롤, 도구 막대 숨김 ── */
@@ -205,7 +242,25 @@ export function initWriteView({ onInput }) {
       e.preventDefault();
       document.execCommand('insertParagraph');
     }
+    // 표·그림 자리 표시 바로 옆에서 지우면 브라우저가 자리 표시를 없애고 앞뒤 문단을 합쳐
+    // 글의 순서가 표를 넘어 바뀐다. 그 경계에서는 지우기를 받지 않는다.
+    if (e.inputType.startsWith('delete') && atLockedEdge(e.inputType.endsWith('Forward'))) e.preventDefault();
   });
+  page.addEventListener('drop', (e) => e.preventDefault()); // 끌어다 놓기는 서식 있는 조각을 끼워 넣는다
+
+  /** 커서(선택 없음)가 문단의 맨 앞(또는 맨 끝)에 있고 그 바깥이 자리 표시인가. */
+  function atLockedEdge(forward) {
+    const sel = document.getSelection();
+    const cur = currentPara();
+    if (!cur || !sel.isCollapsed) return false;
+    const side = document.createRange();
+    side.selectNodeContents(cur);
+    if (forward) side.setStart(sel.anchorNode, sel.anchorOffset);
+    else side.setEnd(sel.anchorNode, sel.anchorOffset);
+    if (side.toString().length) return false;
+    const neighbor = forward ? cur.nextElementSibling : cur.previousElementSibling;
+    return !!neighbor?.classList.contains('locked');
+  }
 
   page.addEventListener('paste', (e) => {
     e.preventDefault();

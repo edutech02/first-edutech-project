@@ -47,13 +47,13 @@
 
 ```
 실행:        npm start            # http://localhost:8080
-단위 테스트:  npm run test:unit    # node --test tests/unit/
+단위 테스트:  npm run test:unit    # 동기화 계획(순수 함수)
+엔진 테스트:  npm run test:engine  # 그 계획을 실제 rhwp 엔진에 실행(브라우저 없이 Node에서)
 통합 테스트:  npm run test:e2e     # 서버를 자동으로 띄우고 Playwright 실행
 전체 테스트:  npm test
 편집기 갱신:  scripts/build-studio.sh <rhwp 저장소 경로> <버전>
 ```
 
-`test:unit`, `test:e2e`와 서버 자동 실행은 V0에 없어서 V1에서 만든다.
 
 ## 폴더 구성
 
@@ -66,7 +66,7 @@ index.html, css/, js/   집필실 본체
   js/store.js           기기 저장
 studio/, vendor/        rhwp 빌드본(직접 고치지 않음)
 scripts/                개발 서버, 편집기 갱신 스크립트
-tests/unit/, tests/e2e/ 테스트
+tests/unit/, tests/engine/, tests/e2e/ 테스트
 tests/fixtures/         시험용 HWPX 파일
 tasks/                  계획(plan.md)과 할 일 목록(todo.md)
 .claude/                agent-skills 스킬(개발 절차용, 앱 동작과 무관)
@@ -98,7 +98,8 @@ export function diffText(before, after) {
 | 수준 | 대상 | 위치 |
 | --- | --- | --- |
 | 단위 | 글자 차이 계산, 문단 대응(추가·삭제·수정) 계획 | `tests/unit/` |
-| 통합 | 실제 엔진으로 문단 동기화 후 HWPX 재열기, 집필↔편집 왕복, 자동 저장, 내보내기 | `tests/e2e/` |
+| 엔진 | 동기화 계획을 실제 엔진에 실행: 표 앞뒤, 각주 문단, 줄바꿈, Enter 후 서식, 무작위 편집 | `tests/engine/` |
+| 통합 | 브라우저에서 집필↔편집 왕복, 자동 저장, 저장 실패, 내보내기 | `tests/e2e/` |
 | 수동 | 실제 아이패드 Safari 점검표(아래 성공 기준 8~10) | `docs/ipad-checklist.md` |
 
 새 동작은 실패하는 테스트를 먼저 쓰고 구현한다. 고친 버그는 재현 테스트를 남긴다.
@@ -142,6 +143,9 @@ export function diffText(before, after) {
 - 집필 화면에서 표·그림 내용을 직접 보여 주기 — 지금은 자리 표시만 한다.
 - 앱스토어용 네이티브 앱 — 맥과 개발자 계정이 필요하다.
 - HWP(구형 바이너리)로 내보내기.
+- 오프라인 실행 보강(서비스 워커가 첫 방문에 앱 전체를 미리 받아 두기) — 배포를 하지 않는 V1에서는 확인할 방법이 없다.
+- 구역이 여러 개인 문서의 검증 — 코드는 구역별로 처리하지만 시험 파일이 없어 테스트하지 못했다.
+- 문단 안 줄바꿈 입력 — 기존 줄바꿈은 보존하지만 집필 화면에서 새로 넣을 수는 없다.
 
 ## 결정된 사항 (2026-11-14)
 

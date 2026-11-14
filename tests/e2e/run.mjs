@@ -29,6 +29,12 @@ const files = readdirSync(here)
   .filter((f) => !only.length || only.some((o) => f.includes(o)))
   .sort();
 
+if (!files.length) {
+  server.kill();
+  console.error(`실행할 테스트가 없습니다: ${only.join(', ')}`);
+  process.exit(1);
+}
+
 let failed = 0;
 for (const file of files) {
   console.log(`\n── ${file}`);

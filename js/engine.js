@@ -85,6 +85,7 @@ export function readSections(doc) {
 }
 
 const run = {
+  new: (doc, sec, o) => doc.insertParagraph(sec, o.para),
   split: (doc, sec, o) => doc.splitParagraph(sec, o.para, o.at),
   insert: (doc, sec, o) => doc.insertText(sec, o.para, o.at, o.text),
   delete: (doc, sec, o) => doc.deleteText(sec, o.para, o.at, o.count),

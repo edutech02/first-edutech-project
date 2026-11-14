@@ -23,13 +23,20 @@ h.main('template', async ({ page }) => {
   await h.selectPara(page, 4);
   await page.keyboard.press('Backspace');
   await page.keyboard.press('Backspace');
+  // 표 바로 앞과 바로 뒤에 새 문단(표와 맞닿은 자리)
+  await h.setCaret(page, 3);
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('표 바로 앞');
+  await h.setCaret(page, 6, 0);
+  await page.keyboard.type('표 바로 뒤');
+  await page.keyboard.press('Enter');
   // 표 뒤 문단 다음에 새 문단
   await h.setCaret(page, (await h.texts(page)).length - 1);
   await page.keyboard.press('Enter');
   await page.keyboard.type('맨 끝에 넣은 문단');
   await h.saved(page);
 
-  const expected = ['맨 앞에 넣은 문단', '{{TITLE}}', '{{SUBTITLE}}', '{{H1}} 고침', '[잠금]', '{{H2}}', '맨 끝에 넣은 문단'];
+  const expected = ['맨 앞에 넣은 문단', '{{TITLE}}', '{{SUBTITLE}}', '{{H1}} 고침', '표 바로 앞', '[잠금]', '표 바로 뒤', '{{H2}}', '맨 끝에 넣은 문단'];
   assert.deepStrictEqual(await h.texts(page), expected);
 
   // 편집 화면을 다녀와도 같다

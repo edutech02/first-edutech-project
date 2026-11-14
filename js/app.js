@@ -16,12 +16,14 @@ const S = {
   writeDirty: false, // 집필 화면에 엔진으로 아직 안 넘긴 변경이 있음
   studio: null,      // rhwp 편집기(iframe)
   studioFresh: false,// 편집기가 지금 문서와 같은 내용을 들고 있음
+  gen: 0,            // 고칠 때마다 1씩 늘어난다(저장 도중에 더 고쳤는지 알아내는 용도)
+  dirtySince: 0,     // 아직 저장 안 된 첫 변경의 시각(없으면 0)
 };
 
 const view = initWriteView({
   onInput() {
     S.writeDirty = true;
-    scheduleSave();
+    touch();
   },
 });
 
@@ -59,8 +61,18 @@ const setStatus = (text) => { $('#status').textContent = text; };
 /** 집필 화면의 변경을 엔진 문서에 반영한다. */
 function commitWrite() {
   if (!S.writeDirty || !S.doc) return;
+  const backup = S.doc.exportHwpx(); // 반영 도중 실패하면 되돌릴 사본
   const { items, perSection } = view.read(S.orig.length);
-  for (let s = perSection.length - 1; s >= 0; s--) syncSection(S.doc, s, S.orig[s], perSection[s]);
+  try {
+    for (let s = perSection.length - 1; s >= 0; s--) syncSection(S.doc, s, S.orig[s], perSection[s]);
+  } catch (err) {
+    // 반쯤 고쳐진 문서 위에 다시 반영하면 글이 겹치거나 사라진다. 사본으로 되돌려 둔다.
+    // 화면의 번호표는 사본과 같은 상태를 가리키므로, 화면의 글은 그대로 남고 다음에 다시 시도할 수 있다.
+    S.doc.free();
+    S.doc = openDocument(backup);
+    S.orig = readSections(S.doc);
+    throw err;
+  }
   S.orig = readSections(S.doc);
   S.writeDirty = false;
   S.studioFresh = false;
@@ -75,28 +87,51 @@ async function currentBytes() {
   return S.doc.exportHwpx();
 }
 
+/** 지금 내용을 기기에 저장한다. 성공하면 true. 실패해도 예외를 던지지 않고 화면에 알린다. */
 async function saveNow() {
-  if (!S.id) return;
+  if (!S.id) return true;
+  const gen = S.gen;
   setStatus('저장 중…');
   try {
     const bytes = await currentBytes();
     await putDoc({ id: S.id, name: S.name, updated: Date.now(), chars: view.chars, bytes });
     if (S.mode === 'edit' && S.studio) await S.studio.notifySaved().catch(() => {});
-    setStatus('저장됨');
+    // 저장하는 사이에 더 고쳤으면 아직 "저장됨"이 아니다(다음 자동 저장이 이미 예약돼 있다).
+    if (S.gen === gen) {
+      S.dirtySince = 0;
+      setStatus('저장됨');
+    } else {
+      S.dirtySince = Date.now();
+      setStatus('고치는 중…');
+    }
+    return true;
   } catch (err) {
     setStatus('저장 실패');
     fail('저장하지 못했습니다', err);
+    return false;
   }
 }
 
+const SAVE_IDLE = 2500;   // 입력이 멈춘 뒤 저장까지
+const SAVE_MAX = 15000;   // 쉬지 않고 써도 이 시간마다는 저장
 let saveTimer = 0;
-function scheduleSave(delay = 2500) {
+
+/** 고친 내용이 생겼음을 알리고 자동 저장을 예약한다. */
+function touch(delay = SAVE_IDLE) {
+  S.gen++;
+  if (!S.dirtySince) S.dirtySince = Date.now();
+  scheduleSave(delay);
+}
+
+function scheduleSave(delay = SAVE_IDLE) {
   setStatus('고치는 중…');
   clearTimeout(saveTimer);
+  const overdue = S.dirtySince ? S.dirtySince + SAVE_MAX - Date.now() : delay;
   saveTimer = setTimeout(() => {
-    if (view.composing) { scheduleSave(800); return; }
+    // 한글 조합 중에는 잠깐 미루되, 너무 오래 밀리면 그냥 저장한다.
+    if (view.composing && Date.now() - S.dirtySince < SAVE_MAX + 10000) { scheduleSave(800); return; }
     serial(saveNow);
-  }, delay);
+  }, Math.max(0, Math.min(delay, overdue)));
 }
 
 function flushSave() {
@@ -125,6 +160,7 @@ async function openFromLibrary(id) {
   $('#title').value = rec.name;
   setMode('write');
   show('work');
+  S.dirtySince = 0;
   setStatus('저장됨');
   document.body.classList.remove('typing');
   view.resetScroll();
@@ -139,7 +175,10 @@ async function createAndOpen(name, bytes) {
 
 async function closeToLibrary() {
   clearTimeout(saveTimer);
-  await saveNow(); // 이미 순서 대기열 안에서 실행 중이므로 flushSave()를 부르면 서로 기다리게 된다
+  // 이미 순서 대기열 안에서 실행 중이므로 flushSave()를 부르면 서로 기다리게 된다.
+  const ok = await saveNow();
+  if (!ok && !confirm('저장하지 못했습니다. 그래도 닫을까요?\n닫으면 마지막으로 저장된 뒤에 쓴 글이 사라집니다.')) return;
+  S.dirtySince = 0;
   S.id = null;
   S.doc?.free();
   S.doc = null;
@@ -189,19 +228,24 @@ async function loadIntoStudio() {
 
 async function enterEdit() {
   if (S.mode === 'edit') return;
-  commitWrite();
+  try {
+    commitWrite();
+  } catch (err) {
+    fail('쓴 글을 문서에 반영하지 못했습니다', err);
+    return;
+  }
   setStatus('편집기 여는 중…');
   setMode('edit'); // 편집기는 화면에 보이는 상태에서 만들어야 크기를 제대로 잡는다
   try {
     if (!S.studio) {
       S.studio = await createEditor($('#edit'), { studioUrl: STUDIO_URL });
-      S.studio.onDocumentChanged?.(() => { if (S.mode === 'edit') scheduleSave(3000); });
+      S.studio.onDocumentChanged?.(() => { if (S.mode === 'edit') touch(3000); });
     }
     if (!S.studioFresh) {
       await loadIntoStudio();
       S.studioFresh = true;
     }
-    setStatus('저장됨');
+    if (!S.dirtySince) setStatus('저장됨');
   } catch (err) {
     setMode('write');
     fail('편집기를 열지 못했습니다', err);
@@ -216,11 +260,19 @@ async function enterWrite() {
     // 편집기에서 다듬은 결과를 통째로 받아 집필 화면의 원본으로 삼는다.
     const bytes = new Uint8Array(await S.studio.exportHwpx());
     loadIntoWrite(bytes);
-    await putDoc({ id: S.id, name: S.name, updated: Date.now(), chars: view.chars, bytes });
-    await S.studio.notifySaved().catch(() => {});
-    setMode('write');
-    setStatus('저장됨');
+    setMode('write'); // 여기부터는 집필 화면이 원본이다. 아래 저장이 실패해도 화면은 넘어가 있어야 한다.
+    try {
+      await putDoc({ id: S.id, name: S.name, updated: Date.now(), chars: view.chars, bytes });
+      await S.studio.notifySaved().catch(() => {});
+      S.dirtySince = 0;
+      setStatus('저장됨');
+    } catch (err) {
+      fail('저장하지 못했습니다', err);
+      S.dirtySince = S.dirtySince || Date.now();
+      scheduleSave(); // 잠시 뒤 다시 시도
+    }
   } catch (err) {
+    setStatus('');
     fail('집필 화면으로 돌아오지 못했습니다', err);
   }
 }
@@ -333,7 +385,7 @@ $('#btnExport').addEventListener('click', () => serial(exportFile).catch((e) => 
 $('#title').addEventListener('change', (e) => {
   S.name = e.target.value.trim() || '제목 없음';
   e.target.value = S.name;
-  scheduleSave(300);
+  touch(300);
 });
 $('#title').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.target.blur(); });
 
