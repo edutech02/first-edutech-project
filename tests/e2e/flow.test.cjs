@@ -1,11 +1,11 @@
-// 자동 점검: node scripts/serve.mjs 를 띄운 뒤 `node tests/e2e.cjs`
+// 전체 흐름 점검. 실행: npm run test:e2e
 const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
 
 const BASE = process.env.BASE || 'http://localhost:8080/';
-const OUT = process.env.OUT || path.join(__dirname, 'out');
+const OUT = process.env.OUT || path.join(__dirname, '..', 'out');
 fs.mkdirSync(OUT, { recursive: true });
 
 const texts = (page) => page.$$eval('#page > p', (ps) => ps.map((p) => (p.classList.contains('locked') ? '[잠금]' : p.textContent)));
@@ -58,7 +58,7 @@ const saved = (page) => page.waitForFunction(() => document.querySelector('#stat
   await page.waitForSelector('#library:not([hidden])');
 
   // 4) 기존 HWPX(표 포함) 열어서 고치기
-  await page.setInputFiles('#fileInput', path.join(__dirname, 'sample.hwpx'));
+  await page.setInputFiles('#fileInput', path.join(__dirname, '..', 'fixtures', 'sample.hwpx'));
   await page.waitForSelector('#work:not([hidden])');
   const before = await texts(page);
   console.log('원본 문단:', JSON.stringify(before));
